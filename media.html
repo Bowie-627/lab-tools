@@ -49,7 +49,7 @@ tr:last-child td{border-bottom:none;}
   <div class="page-header">
     <div class="page-header-left">
       <h1>培养基计算器</h1>
-      <span class="ver">v0.1 · 2026-04-28</span>
+      <span class="ver">v1.0 · 2026-04-28</span>
     </div>
     <a class="back-link" href="index.html">← 工具箱</a>
   </div>
@@ -201,8 +201,8 @@ function goStep2(){
     return `<div class="vol-card">
       <div class="vol-card-name">${m.name}</div>
       <div class="vol-row">
-        <div class="field"><label>瓶数</label><input type="number" id="vb-${key}" value="2" min="1"/></div>
-        <div class="field"><label>单瓶体积 (mL)</label><input type="number" id="vp-${key}" value="500" min="1"/></div>
+        <div class="field"><label>瓶数</label><input type="number" id="vb-${key}" value="1" min="1"/></div>
+        <div class="field"><label>单瓶体积 (mL)</label><input type="number" id="vp-${key}" value="200" min="1"/></div>
       </div></div>`;
   }).join('');
   show('step2');
