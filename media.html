@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>培养基计算器</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.media-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.media-chip{display:flex;align-items:center;gap:8px;padding:9px 12px;
+            border:1px solid var(--border);border-radius:8px;cursor:pointer;
+            font-size:13px;font-family:var(--display);user-select:none;
+            transition:background .12s,border-color .12s;}
+.media-chip.selected{background:#eef4ff;border-color:#7aabf0;}
+.media-chip input{display:none;}
+.dot{width:15px;height:15px;border-radius:4px;border:1.5px solid #ccc;flex-shrink:0;
+     display:flex;align-items:center;justify-content:center;transition:background .12s,border-color .12s;}
+.media-chip.selected .dot{background:var(--accent);border-color:var(--accent);}
+.media-chip.selected .dot::after{content:'';display:block;width:7px;height:4px;
+  border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px);}
+.vol-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+          padding:12px 14px;margin-bottom:10px;}
+.vol-card-name{font-size:13px;font-weight:600;margin-bottom:10px;}
+.vol-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.results-title{font-size:14px;font-weight:600;}
+.media-section{margin-bottom:20px;}
+.media-section:last-child{margin-bottom:0;}
+.media-name-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.media-name{font-size:14px;font-weight:600;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--hint);
+   padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);background:var(--bg3);}
+th.r{text-align:right;}
+td{padding:8px 10px;border-bottom:1px solid var(--bg3);font-family:var(--mono);}
+td.r{text-align:right;color:var(--muted);}
+tr:last-child td{border-bottom:none;}
+.divider{height:1px;background:var(--border);margin:18px 0;}
+.empty{text-align:center;color:var(--hint);font-family:var(--mono);font-size:12px;padding:2rem 0;}
+.step-back{background:none;border:none;font-family:var(--mono);font-size:12px;
+           color:var(--hint);cursor:pointer;margin-top:10px;display:block;width:100%;text-align:center;}
+#step1,#step2,#step3{display:none;}
+#step1{display:block;}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>培养基计算器</h1>
+      <span class="ver">v0.1 · 2026-04-28</span>
+    </div>
+    <a class="back-link" href="index.html">← 工具箱</a>
+  </div>
+
+  <!-- STEP 1 -->
+  <div id="step1">
+    <div class="card card-body">
+      <p class="section-label">第一步 · 选择培养基</p>
+      <div class="media-grid" id="media-grid"></div>
+      <button class="btn btn-primary" onclick="goStep2()">下一步：设置体积 →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="step2">
+    <div class="card card-body">
+      <p class="section-label">第二步 · 设置瓶数和单瓶体积</p>
+      <div id="vol-inputs"></div>
+      <button class="btn btn-primary" onclick="goStep3()">查看用量 →</button>
+      <button class="step-back" onclick="show('step1')">← 重新选择培养基</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div id="step3">
+    <div class="card card-body">
+      <div class="results-header">
+        <span class="results-title">用量清单</span>
+        <button class="btn btn-ghost btn-sm" onclick="show('step2')">← 修改体积</button>
+      </div>
+      <div id="results-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MEDIA_LIST=[
+  {key:"lb_sol", name:"LB 固体"},
+  {key:"sb",     name:"SB 液体"},
+  {key:"soc",    name:"SOC 液体"},
+  {key:"ypd_liq",name:"YPD 液体"},
+  {key:"ypd_sol",name:"YPD 固体"},
+  {key:"sc_lys", name:"SC -Lys 固体"},
+  {key:"sc_trp", name:"SC -Trp 固体"},
+  {key:"sc_his", name:"SC -His 固体"},
+  {key:"sc_ura", name:"SC -Ura3 固体"},
+  {key:"sc_leu", name:"SC -Leu 固体"},
+];
+const MEDIA={
+  lb_sol:{name:"LB 固体",ingredients:[
+    {name:"胰蛋白胨 (Tryptone)",gl:10},
+    {name:"酵母提取物 (Yeast Extract)",gl:5},
+    {name:"氯化钠 (NaCl)",gl:10},
+    {name:"琼脂 (Agar)",gl:15},
+  ]},
+  sb:{name:"SB 液体",ingredients:[
+    {name:"胰蛋白胨 (Tryptone)",gl:32},
+    {name:"酵母提取物 (Yeast Extract)",gl:20},
+    {name:"氯化钠 (NaCl)",gl:5},
+  ]},
+  soc:{name:"SOC 液体",ingredients:[
+    {name:"胰蛋白胨 (Tryptone)",gl:20},
+    {name:"酵母提取物 (Yeast Extract)",gl:5},
+    {name:"氯化钠 (NaCl)",gl:0.5},
+    {name:"氯化钾 (KCl)",gl:0.186},
+    {name:"氯化镁 (MgCl₂·6H₂O)",gl:2.03},
+    {name:"葡萄糖母液 (500 g/L) *",gl:3.6,gluc:true},
+  ]},
+  ypd_liq:{name:"YPD 液体",ingredients:[
+    {name:"胰蛋白胨 (Tryptone)",gl:20},
+    {name:"酵母提取物 (Yeast Extract)",gl:10},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  ypd_sol:{name:"YPD 固体",ingredients:[
+    {name:"胰蛋白胨 (Tryptone)",gl:20},
+    {name:"酵母提取物 (Yeast Extract)",gl:10},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  sc_lys:{name:"SC -Lys 固体",ingredients:[
+    {name:"YNB",gl:1.7},
+    {name:"硫酸铵 ((NH₄)₂SO₄)",gl:5},
+    {name:"色氨酸 (Trp)",gl:0.1},
+    {name:"组氨酸 (His)",gl:0.1},
+    {name:"尿嘧啶 (Ura3)",gl:0.1},
+    {name:"亮氨酸 (Leu)",gl:0.1},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  sc_trp:{name:"SC -Trp 固体",ingredients:[
+    {name:"YNB",gl:1.7},
+    {name:"硫酸铵 ((NH₄)₂SO₄)",gl:5},
+    {name:"赖氨酸 (Lys)",gl:0.1},
+    {name:"组氨酸 (His)",gl:0.1},
+    {name:"尿嘧啶 (Ura3)",gl:0.1},
+    {name:"亮氨酸 (Leu)",gl:0.1},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  sc_his:{name:"SC -His 固体",ingredients:[
+    {name:"YNB",gl:1.7},
+    {name:"硫酸铵 ((NH₄)₂SO₄)",gl:5},
+    {name:"赖氨酸 (Lys)",gl:0.1},
+    {name:"色氨酸 (Trp)",gl:0.1},
+    {name:"尿嘧啶 (Ura3)",gl:0.1},
+    {name:"亮氨酸 (Leu)",gl:0.1},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  sc_ura:{name:"SC -Ura3 固体",ingredients:[
+    {name:"YNB",gl:1.7},
+    {name:"硫酸铵 ((NH₄)₂SO₄)",gl:5},
+    {name:"赖氨酸 (Lys)",gl:0.1},
+    {name:"色氨酸 (Trp)",gl:0.1},
+    {name:"组氨酸 (His)",gl:0.1},
+    {name:"亮氨酸 (Leu)",gl:0.1},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+  sc_leu:{name:"SC -Leu 固体",ingredients:[
+    {name:"YNB",gl:1.7},
+    {name:"硫酸铵 ((NH₄)₂SO₄)",gl:5},
+    {name:"赖氨酸 (Lys)",gl:0.1},
+    {name:"色氨酸 (Trp)",gl:0.1},
+    {name:"组氨酸 (His)",gl:0.1},
+    {name:"尿嘧啶 (Ura3)",gl:0.1},
+    {name:"琼脂 (Agar)",gl:20},
+    {name:"葡萄糖母液 (500 g/L) *",gl:40,gluc:true},
+  ]},
+};
+
+const grid=document.getElementById('media-grid');
+MEDIA_LIST.forEach(m=>{
+  const chip=document.createElement('label');
+  chip.className='media-chip';
+  chip.innerHTML=`<input type="checkbox" value="${m.key}"><div class="dot"></div>${m.name}`;
+  chip.querySelector('input').addEventListener('change',()=>chip.classList.toggle('selected',chip.querySelector('input').checked));
+  grid.appendChild(chip);
+});
+
+let selectedKeys=[];
+function show(id){['step1','step2','step3'].forEach(s=>document.getElementById(s).style.display=s===id?'block':'none');window.scrollTo(0,0);}
+
+function goStep2(){
+  selectedKeys=[...document.querySelectorAll('#media-grid input:checked')].map(i=>i.value);
+  if(!selectedKeys.length){alert('请至少选择一种培养基');return;}
+  document.getElementById('vol-inputs').innerHTML=selectedKeys.map(key=>{
+    const m=MEDIA[key];
+    return `<div class="vol-card">
+      <div class="vol-card-name">${m.name}</div>
+      <div class="vol-row">
+        <div class="field"><label>瓶数</label><input type="number" id="vb-${key}" value="2" min="1"/></div>
+        <div class="field"><label>单瓶体积 (mL)</label><input type="number" id="vp-${key}" value="500" min="1"/></div>
+      </div></div>`;
+  }).join('');
+  show('step2');
+}
+
+function goStep3(){
+  document.getElementById('results-body').innerHTML=selectedKeys.map((key,idx)=>{
+    const m=MEDIA[key];
+    const bottles=parseInt(document.getElementById(`vb-${key}`).value)||1;
+    const vp=parseFloat(document.getElementById(`vp-${key}`).value)||0;
+    const vt=bottles*vp;
+    const rows=m.ingredients.map(ing=>{
+      const at=ing.gluc?(ing.gl*vt/500).toFixed(2)+' mL':(ing.gl*vt/1000).toFixed(2)+' g';
+      const ap=ing.gluc?(ing.gl*vp/500).toFixed(2)+' mL':(ing.gl*vp/1000).toFixed(2)+' g';
+      return `<tr><td>${ing.name}</td><td class="r">${ing.gl} g/L</td><td class="r">${at}</td><td class="r">${ap}</td></tr>`;
+    }).join('');
+    return `${idx>0?'<div class="divider"></div>':''}
+      <div class="media-section">
+        <div class="media-name-row">
+          <span class="media-name">${m.name}</span>
+          <span class="badge">${bottles} 瓶 · 单瓶 ${vp} mL</span>
+        </div>
+        <table><thead><tr><th>成分</th><th class="r">g/L</th><th class="r">总量</th><th class="r">单瓶</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>`;
+  }).join('');
+  show('step3');
+}
+</script>
+</body>
+</html>

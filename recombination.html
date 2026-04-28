@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>同源重组计算器</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<style>
+.btn-primary{width:auto;margin-top:0;}
+.btn-x{background:none;border:none;cursor:pointer;color:var(--hint);font-size:18px;
+        line-height:1;padding:2px 6px;border-radius:4px;transition:color .15s,background .15s;}
+.btn-x:hover{color:var(--danger);background:var(--danger-bg);}
+.reactions-list{display:flex;flex-direction:column;gap:20px;}
+.empty-state{text-align:center;padding:3rem 1rem;color:var(--hint);
+             font-family:var(--mono);font-size:12px;border:1.5px dashed var(--border2);border-radius:14px;}
+.rxn-block{background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.rxn-header{display:flex;align-items:center;justify-content:space-between;
+            padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border);}
+.rxn-name-input{background:transparent;border:none;outline:none;font-family:var(--display);
+                font-size:13px;font-weight:600;color:var(--text);width:180px;}
+.rxn-name-input::placeholder{color:var(--hint);}
+.rxn-inner{padding:14px 16px;}
+.vec-row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;
+         padding-bottom:14px;border-bottom:1px solid var(--border);margin-bottom:14px;}
+.frag-row{display:grid;grid-template-columns:28px 1fr 1fr auto;gap:10px;align-items:end;
+          padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--border);}
+.frag-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.frag-num{font-family:var(--mono);font-size:11px;color:var(--hint);padding-bottom:8px;}
+.ng-badge{background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+          padding:7px 10px;font-family:var(--mono);font-size:12px;font-weight:500;
+          color:var(--accent);white-space:nowrap;text-align:right;min-width:80px;}
+.add-frag{margin-top:10px;}
+.rxn-results{margin-top:14px;}
+.result-row{border-radius:8px;padding:10px 14px;margin-bottom:8px;border:1px solid;}
+.result-row:last-of-type{margin-bottom:0;}
+.result-row.ok{background:var(--success-bg);border-color:var(--success-border);}
+.result-row.dil{background:var(--danger-bg);border-color:var(--danger-border);}
+.rr-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.rr-name{font-size:12px;font-weight:600;}
+.result-row.ok .rr-name,.result-row.ok .rr-action{color:var(--success);}
+.result-row.dil .rr-name,.result-row.dil .rr-action{color:var(--danger);}
+.rr-action{font-family:var(--mono);font-size:12px;font-weight:500;}
+.rr-note{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.dil-steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;
+           background:rgba(0,0,0,0.04);border-radius:6px;padding:8px 10px;text-align:center;}
+.dil-step-label{font-family:var(--mono);font-size:10px;color:var(--hint);display:block;margin-bottom:2px;}
+.dil-step-val{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);}
+.rxn-table-wrap{margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:8px;}
+.rxn-table-title{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+                  color:var(--hint);margin-bottom:8px;font-family:var(--mono);}
+.rxn-table{width:100%;border-collapse:collapse;}
+.rxn-table tr{border-bottom:1px solid var(--border);}
+.rxn-table tr:last-child{border-bottom:none;}
+.rxn-table td{padding:7px 0;font-family:var(--mono);font-size:12px;}
+.rxn-table td:first-child{color:var(--muted);}
+.rxn-table td:last-child{text-align:right;font-weight:500;}
+.rxn-table .total-row td{color:var(--accent);border-top:1px solid var(--border2);padding-top:8px;}
+.water-ok{color:var(--accent2)!important;}
+.water-bad{color:var(--danger)!important;}
+.dbadge{display:inline-block;font-family:var(--mono);font-size:10px;padding:1px 6px;
+        border-radius:4px;margin-left:4px;background:rgba(220,38,38,0.08);
+        color:var(--danger);border:1px solid rgba(220,38,38,0.2);}
+.rxn-time{font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:8px;}
+.sys-vol-wrap{display:flex;align-items:center;gap:6px;}
+.sys-vol-wrap label{margin:0;white-space:nowrap;}
+.sys-vol-input{width:60px!important;padding:5px 8px!important;font-size:12px!important;}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>同源重组计算器</h1>
+      <span class="ver">v1.0 · 2026-04-28</span>
+    </div>
+    <a class="back-link" href="index.html">← 工具箱</a>
+  </div>
+  <div style="margin-bottom:16px;">
+    <button class="btn btn-primary" onclick="addReaction()">+ 添加反应</button>
+  </div>
+  <div class="reactions-list" id="reactionsList">
+    <div class="empty-state" id="emptyState">点击「添加反应」开始计算</div>
+  </div>
+</div>
+
+<script>
+let rxnCounter=0;
+const rxnFrags={};
+const rxnTimes={1:'5 min',2:'10 min',3:'20 min',4:'30 min',5:'40 min',6:'50 min'};
+function r1(v){return Math.round(v*10)/10;}
+function r2(v){return Math.round(v*100)/100;}
+
+function calcDilution(ng,conc){
+  const raw=ng/conc;
+  if(raw>=0.5)return{needsDil:false,vol:r1(raw),raw};
+  const water=r1(1.0/raw-1.0);
+  const newConc=r2(ng/(1.0+water));
+  return{needsDil:true,vol:1.0,raw,water,newConc};
+}
+
+function dilRow(label,ng,conc){
+  const d=calcDilution(ng,conc);
+  if(!d.needsDil)return`<div class="result-row ok">
+    <div class="rr-header"><span class="rr-name">${label}　无需稀释</span><span class="rr-action">直接取 ${d.vol} µL</span></div>
+    <p class="rr-note">所需 ${r2(ng)} ng　浓度 ${conc} ng/µL</p></div>`;
+  return`<div class="result-row dil">
+    <div class="rr-header"><span class="rr-name">${label}　需要稀释</span><span class="rr-action">原始体积 ${r2(d.raw)} µL &lt; 0.5 µL</span></div>
+    <p class="rr-note">所需 ${r2(ng)} ng　浓度 ${conc} ng/µL</p>
+    <div class="dil-steps">
+      <div><span class="dil-step-label">取原液</span><span class="dil-step-val">1.0 µL</span></div>
+      <div><span class="dil-step-label">加 ddH₂O</span><span class="dil-step-val">${d.water} µL</span></div>
+      <div><span class="dil-step-label">稀释后浓度</span><span class="dil-step-val">${d.newConc} ng/µL</span></div>
+    </div>
+    <p class="rr-note" style="margin-top:6px;text-align:center;">稀释后取 1.0 µL，含 ${d.newConc} ng</p></div>`;
+}
+
+function calcReaction(rid){
+  const vecLen=parseFloat(document.getElementById('vL_'+rid).value)||0;
+  const vecConc=parseFloat(document.getElementById('vC_'+rid).value)||0;
+  const sysVol=parseFloat(document.getElementById('sysVol_'+rid).value)||10;
+  const premix=r1(sysVol/2);
+  const volScale=r2(sysVol/10);
+  const frags=rxnFrags[rid]||[];
+  const isMulti=frags.length>1;
+  const vecCoef=0.02,fragCoef=isMulti?0.02:0.04;
+  const vecNg=r2(vecLen*vecCoef*volScale);
+  document.getElementById('vNg_'+rid).textContent=vecLen?vecNg+' ng':'—';
+  let ok=vecLen&&vecConc;
+  const fd=frags.map((fid,i)=>{
+    const fl=parseFloat(document.getElementById('fL_'+rid+'_'+fid).value)||0;
+    const fc=parseFloat(document.getElementById('fC_'+rid+'_'+fid).value)||0;
+    const fn=r2(fl*fragCoef*volScale);
+    document.getElementById('fNg_'+rid+'_'+fid).textContent=fl?fn+' ng':'—';
+    if(!fl||!fc)ok=false;
+    return{label:'片段 '+(i+1),ng:fn,conc:fc,fl};
+  });
+  const resEl=document.getElementById('res_'+rid);
+  const tblEl=document.getElementById('tbl_'+rid);
+  const timeEl=document.getElementById('time_'+rid);
+  const titleEl=document.getElementById('tblTitle_'+rid);
+  if(!ok||frags.length===0){resEl.innerHTML='';tblEl.innerHTML='';timeEl.textContent='';titleEl.textContent='反应体系';return;}
+  titleEl.textContent=`反应体系（${sysVol} µL）`;
+  const vd=calcDilution(vecNg,vecConc);
+  let html=dilRow('载体',vecNg,vecConc);
+  let totalVol=vd.vol;
+  let rows=`<tr><td>2× Enzyme Premix</td><td>${premix} µL</td></tr>`;
+  rows+=`<tr><td>载体${vd.needsDil?'<span class="dbadge">稀释后</span>':''}</td><td>${vd.vol} µL</td></tr>`;
+  fd.forEach(f=>{
+    html+=dilRow(f.label,f.ng,f.conc);
+    const d=calcDilution(f.ng,f.conc);
+    totalVol+=d.vol;
+    rows+=`<tr><td>${f.label}${d.needsDil?'<span class="dbadge">稀释后</span>':''}</td><td>${d.vol} µL</td></tr>`;
+  });
+  resEl.innerHTML=html;
+  const water=r1(sysVol-premix-totalVol);
+  rows+=`<tr><td>ddH₂O</td><td class="${water<0?'water-bad':'water-ok'}">${water<0?'超量！':water+' µL'}</td></tr>`;
+  rows+=`<tr class="total-row"><td>总计</td><td>${sysVol} µL</td></tr>`;
+  tblEl.innerHTML=rows;
+  timeEl.textContent=`反应条件：50°C　${rxnTimes[frags.length]||'50 min'}　（${frags.length} 个片段）`;
+}
+
+function addFrag(rid){
+  if(!rxnFrags[rid])rxnFrags[rid]=[];
+  if(rxnFrags[rid].length>=6){alert('最多支持 6 个插入片段');return;}
+  const fid=Date.now();rxnFrags[rid].push(fid);
+  const i=rxnFrags[rid].length;
+  const wrap=document.getElementById('fw_'+rid);
+  const row=document.createElement('div');
+  row.className='frag-row';row.id='fr_'+rid+'_'+fid;
+  row.innerHTML=`<span class="frag-num">片段 ${i}</span>
+    <div class="field"><label>长度 (bp)</label><input type="number" id="fL_${rid}_${fid}" placeholder="如 1000" min="1" oninput="calcReaction(${rid})"/></div>
+    <div class="field"><label>浓度 (ng/µL)</label><input type="number" id="fC_${rid}_${fid}" placeholder="如 20" min="0.01" step="0.1" oninput="calcReaction(${rid})"/></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+      <label style="visibility:hidden">x</label>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="ng-badge" id="fNg_${rid}_${fid}">—</div>
+        <button class="btn-x" onclick="removeFrag(${rid},${fid})">×</button>
+      </div></div>`;
+  wrap.appendChild(row);calcReaction(rid);
+}
+
+function removeFrag(rid,fid){
+  document.getElementById('fr_'+rid+'_'+fid)?.remove();
+  rxnFrags[rid]=rxnFrags[rid].filter(f=>f!==fid);
+  document.getElementById('fw_'+rid).querySelectorAll('.frag-num').forEach((el,i)=>el.textContent='片段 '+(i+1));
+  calcReaction(rid);
+}
+
+function removeReaction(rid){
+  document.getElementById('rxn_'+rid)?.remove();
+  delete rxnFrags[rid];
+  if(!document.querySelector('.rxn-block'))document.getElementById('emptyState').style.display='';
+}
+
+function addReaction(){
+  document.getElementById('emptyState').style.display='none';
+  rxnCounter++;const rid=rxnCounter;rxnFrags[rid]=[];
+  const div=document.createElement('div');
+  div.className='rxn-block';div.id='rxn_'+rid;
+  div.innerHTML=`
+    <div class="rxn-header">
+      <input class="rxn-name-input" type="text" placeholder="反应 ${rid}" maxlength="30"/>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="sys-vol-wrap">
+          <label>体系体积</label>
+          <input type="number" id="sysVol_${rid}" value="10" min="5" max="50" step="5"
+            class="sys-vol-input" oninput="calcReaction(${rid})"/>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--hint);">µL</span>
+        </div>
+        <button class="btn-x" onclick="removeReaction(${rid})">×</button>
+      </div>
+    </div>
+    <div class="rxn-inner">
+      <p class="section-label">载体</p>
+      <div class="vec-row">
+        <div class="field"><label>长度 (bp)</label><input type="number" id="vL_${rid}" placeholder="如 5000" min="1" oninput="calcReaction(${rid})"/></div>
+        <div class="field"><label>浓度 (ng/µL)</label><input type="number" id="vC_${rid}" placeholder="如 50" min="0.01" step="0.1" oninput="calcReaction(${rid})"/></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+          <label>所需投入量</label>
+          <div class="ng-badge" id="vNg_${rid}">—</div>
+        </div>
+      </div>
+      <p class="section-label">插入片段</p>
+      <div id="fw_${rid}"></div>
+      <div class="add-frag"><button class="btn btn-ghost btn-sm" onclick="addFrag(${rid})">+ 添加片段</button></div>
+      <div class="rxn-results" id="res_${rid}"></div>
+      <div class="rxn-table-wrap">
+        <p class="rxn-table-title" id="tblTitle_${rid}">反应体系</p>
+        <table class="rxn-table"><tbody id="tbl_${rid}"></tbody></table>
+        <p class="rxn-time" id="time_${rid}"></p>
+      </div>
+    </div>`;
+  document.getElementById('reactionsList').appendChild(div);
+  addFrag(rid);
+}
+
+addReaction();
+</script>
+</body>
+</html>
