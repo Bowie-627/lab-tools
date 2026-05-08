@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>擎科三代测序表格</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+.upload-zone{
+  border:2px dashed var(--border2);border-radius:12px;padding:2rem;text-align:center;
+  cursor:pointer;background:var(--bg2);margin-bottom:16px;
+  transition:border-color .15s,background .15s;
+}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:#eef4ff;}
+.upload-zone .uz-icon{font-size:28px;margin-bottom:8px;}
+.upload-zone h3{font-size:14px;font-weight:600;margin-bottom:3px;}
+.upload-zone p{font-family:var(--mono);font-size:11px;color:var(--muted);}
+.upload-zone .hint{font-size:11px;color:var(--hint);margin-top:3px;}
+#file-input{display:none;}
+
+.params-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+             padding:16px;margin-bottom:16px;}
+.params-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;}
+.param-item{display:flex;flex-direction:column;gap:4px;}
+.param-item label{font-family:var(--mono);font-size:11px;color:var(--hint);}
+.param-item input[type="number"]{width:130px;}
+
+.rep-selector{display:flex;gap:6px;align-items:center;}
+.rep-btn{
+  width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;
+  font-size:13px;font-weight:600;cursor:pointer;
+  background:var(--bg3);color:var(--muted);
+  font-family:var(--display);transition:all .1s;
+}
+.rep-btn:hover{border-color:var(--accent);color:var(--accent);}
+.rep-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.rep-custom{width:60px!important;}
+
+.btn-row{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+.btn-row .btn{width:auto;margin-top:0;}
+
+.err-box{
+  background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:8px;
+  padding:9px 13px;font-family:var(--mono);font-size:12px;color:var(--danger);
+  margin-bottom:12px;display:none;
+}
+
+.table-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.table-scroll{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{
+  background:var(--bg3);font-family:var(--mono);font-size:10px;font-weight:500;
+  color:var(--hint);padding:9px 12px;text-align:left;
+  border-bottom:1px solid var(--border);white-space:nowrap;
+  position:sticky;top:0;
+}
+td{padding:8px 12px;border-bottom:1px solid var(--bg3);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.group-first td{border-top:1.5px solid var(--border2);}
+.group-last td{border-bottom:1.5px solid var(--border2)!important;}
+
+.seq-cell{font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all;max-width:180px;}
+.num-cell{text-align:center;font-family:var(--mono);font-weight:500;}
+.tag{font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:5px;display:inline-block;line-height:1.5;word-break:break-all;}
+.tag-up{color:#1e40af;background:#dbeafe;}
+.tag-dn{color:#166534;background:#dcfce7;}
+.tag-plasmid{color:#5b21b6;background:#ede9fe;font-weight:600;font-size:11px;font-family:var(--mono);}
+.tag-rep{color:#92400e;background:#fef3c7;font-size:11px;font-weight:600;font-family:var(--mono);padding:2px 7px;border-radius:5px;white-space:nowrap;}
+
+.empty-state{text-align:center;padding:3rem 1rem;color:var(--hint);font-family:var(--mono);font-size:12px;}
+
+.toast{
+  position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(8px);
+  background:var(--text);color:#fff;padding:9px 20px;border-radius:20px;
+  font-family:var(--mono);font-size:12px;opacity:0;transition:all .2s;
+  z-index:999;pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>擎科三代测序表格</h1>
+      <span class="ver">v1.0 · 2026-05-08</span>
+    </div>
+    <a class="back-link" href="index.html">← 工具箱</a>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div class="uz-icon">📂</div>
+    <h3>点击或拖拽上传 Excel 文件</h3>
+    <p>支持 .xlsx 和 .xls 格式</p>
+    <p class="hint">第一列：片段名称　|　第二列：碱基序列（ATGCN）</p>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls">
+
+  <!-- Params -->
+  <div class="params-card">
+    <p class="section-label">参数设置</p>
+    <div class="params-row">
+      <div class="param-item">
+        <label>载体骨架长度（bp）</label>
+        <input type="number" id="vector-len" placeholder="如 2686" min="1">
+      </div>
+      <div class="param-item">
+        <label>定位序列长度（bp）</label>
+        <input type="number" id="bp-len" value="20" min="1" max="200">
+      </div>
+      <div class="param-item">
+        <label>每个质粒重复测序数</label>
+        <div class="rep-selector">
+          <button class="rep-btn" data-v="1" onclick="setRep(1)">1</button>
+          <button class="rep-btn active" data-v="3" onclick="setRep(3)">3</button>
+          <button class="rep-btn" data-v="5" onclick="setRep(5)">5</button>
+          <input type="number" id="rep-custom" class="rep-custom" placeholder="自定" min="1" max="20" oninput="setRepCustom(this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="err-box" id="err-box"></div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-export" disabled onclick="exportExcel()">↓ 导出 Excel</button>
+    <button class="btn btn-ghost" onclick="downloadTemplate()">⬇ 下载上传模板</button>
+    <button class="btn btn-ghost" id="btn-clear" disabled onclick="clearData()">清除数据</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:5%">组号</th>
+            <th style="width:12%">片段名称</th>
+            <th style="width:7%;text-align:center">重复</th>
+            <th style="width:18%">碱基序列</th>
+            <th style="width:8%;text-align:center">插入长度（bp）</th>
+            <th style="width:9%;text-align:center">全质粒大小（bp）</th>
+            <th style="width:20%">上游定位序列（5'→3'）</th>
+            <th style="width:21%">下游定位序列（5'→3'）</th>
+          </tr>
+        </thead>
+        <tbody id="tbl-body">
+          <tr><td colspan="8" class="empty-state">请上传 Excel 文件以开始计算</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let rows = [], rawData = [], currentRep = 3;
+const comp = {'A':'T','T':'A','G':'C','C':'G','N':'N'};
+
+function revComp(s){ return s.split('').reverse().map(b=>comp[b.toUpperCase()]||'N').join(''); }
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function setRep(v){
+  currentRep=v;
+  document.querySelectorAll('.rep-btn').forEach(b=>b.classList.toggle('active',parseInt(b.dataset.v)===v));
+  document.getElementById('rep-custom').value='';
+  if(rawData.length) renderTable(rawData);
+}
+
+function setRepCustom(val){
+  const v=parseInt(val); if(!v||v<1) return;
+  currentRep=v;
+  document.querySelectorAll('.rep-btn').forEach(b=>b.classList.remove('active'));
+  if(rawData.length) renderTable(rawData);
+}
+
+function getParams(){
+  const bp=Math.max(1,parseInt(document.getElementById('bp-len').value)||20);
+  const vLen=parseInt(document.getElementById('vector-len').value)||0;
+  return{bp,vLen};
+}
+
+function processSeqs(data){
+  const{bp,vLen}=getParams();
+  return data.map((r,i)=>{
+    const name=r[0]!==undefined?String(r[0]).trim():'';
+    const rawSeq=r[1]!==undefined?String(r[1]).trim().toUpperCase().replace(/[^ATGCN]/g,''):'';
+    const len=rawSeq.length;
+    const upstream=len>=bp?rawSeq.substring(0,bp):rawSeq;
+    const downstream=len>=bp?revComp(rawSeq.substring(len-bp)):revComp(rawSeq);
+    const plasmid=vLen>0?vLen+len:null;
+    return{groupIdx:i+1,name,seq:rawSeq,len,upstream,downstream,plasmid};
+  }).filter(r=>r.seq.length>0);
+}
+
+function renderTable(data){
+  rawData=data; rows=processSeqs(data);
+  const tbody=document.getElementById('tbl-body');
+  const rep=currentRep;
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="8" class="empty-state">未找到有效序列数据，请检查 Excel 格式</td></tr>';
+    return;
+  }
+  let html='';
+  rows.forEach(r=>{
+    for(let ri=1;ri<=rep;ri++){
+      const isFirst=ri===1, isLast=ri===rep;
+      const cls=(isFirst?'group-first ':'')+(isLast?'group-last':'');
+      html+=`<tr class="${cls}">`;
+      if(isFirst){
+        html+=`<td class="num-cell" rowspan="${rep}" style="color:var(--hint);font-size:11px">${r.groupIdx}</td>`;
+        html+=`<td rowspan="${rep}" style="font-weight:600;font-size:12px">${r.name||'—'}</td>`;
+      }
+      html+=`<td style="text-align:center"><span class="tag-rep">重复 ${ri}</span></td>`;
+      if(isFirst){
+        html+=`<td rowspan="${rep}" class="seq-cell">${r.seq.length>46?r.seq.substring(0,46)+'…':r.seq}</td>`;
+        html+=`<td rowspan="${rep}" class="num-cell">${r.len}</td>`;
+        html+=`<td rowspan="${rep}" style="text-align:center">${r.plasmid!==null?`<span class="tag tag-plasmid">${r.plasmid}</span>`:`<span style="color:var(--hint);font-size:11px">—</span>`}</td>`;
+        html+=`<td rowspan="${rep}"><span class="tag tag-up">${r.upstream}</span></td>`;
+        html+=`<td rowspan="${rep}"><span class="tag tag-dn">${r.downstream}</span></td>`;
+      }
+      html+=`</tr>`;
+    }
+  });
+  tbody.innerHTML=html;
+  document.getElementById('btn-export').disabled=false;
+  document.getElementById('btn-clear').disabled=false;
+}
+
+function handleFile(file){
+  const err=document.getElementById('err-box'); err.style.display='none';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      let data=json.filter(r=>r.some(c=>String(c).trim()!==''));
+      if(data.length>1){
+        const first=data[0];
+        if(typeof first[0]==='string'&&!/^[ATGCN]+$/i.test(String(first[1]||'').trim())) data=data.slice(1);
+      }
+      renderTable(data);
+      showToast(`已加载 ${rows.length} 条序列`);
+    }catch(ex){
+      err.textContent='文件解析失败，请确认为有效的 Excel 文件（.xlsx / .xls）';
+      err.style.display='block';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('file-input').addEventListener('change',e=>{if(e.target.files[0]) handleFile(e.target.files[0]);});
+
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);});
+
+['bp-len','vector-len'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',()=>{if(rawData.length) renderTable(rawData);});
+});
+
+function exportExcel(){
+  if(!rows.length) return;
+  const{bp,vLen}=getParams(); const rep=currentRep;
+  const header=['组号','片段名称','重复编号','碱基序列','插入片段长度（bp）','全质粒大小（bp）',`上游定位序列（5'端${bp}bp）`,`下游定位序列（3'端互补链${bp}bp）`];
+  const wsData=[header];
+  rows.forEach(r=>{
+    for(let ri=1;ri<=rep;ri++){
+      wsData.push([r.groupIdx,r.name,`重复 ${ri}`,r.seq,r.len,r.plasmid!==null?r.plasmid:'',r.upstream,r.downstream]);
+    }
+  });
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols']=[6,16,8,32,14,14,28,28].map(w=>({wch:w}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'引物计算结果');
+  const suffix=vLen>0?`_vector${vLen}bp`:'';
+  const filename=`primer_results${suffix}_${bp}bp_rep${rep}.xlsx`;
+  XLSX.writeFile(wb,filename);
+  showToast(`已导出 ${filename}`);
+}
+
+function downloadTemplate(){
+  const wsData=[
+    ['片段名称','碱基序列'],
+    ['Fragment_A','ATGCGTAACGTTAGCTAGCTAGCTAGCATGCGTAACGTT'],
+    ['Fragment_B','GCTAGCTAGCATGCATGCGTAACGTTAGCTAGCTAGCTAGC'],
+    ['',''],
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols']=[{wch:20},{wch:60}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'序列输入模板');
+  XLSX.writeFile(wb,'序列上传模板.xlsx');
+  showToast('模板已下载：序列上传模板.xlsx');
+}
+
+function clearData(){
+  rawData=[];rows=[];
+  document.getElementById('tbl-body').innerHTML='<tr><td colspan="8" class="empty-state">请上传 Excel 文件以开始计算</td></tr>';
+  document.getElementById('btn-export').disabled=true;
+  document.getElementById('btn-clear').disabled=true;
+  document.getElementById('file-input').value='';
+  document.getElementById('err-box').style.display='none';
+  showToast('已清除所有数据');
+}
+</script>
+</body>
+</html>
