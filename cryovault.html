@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>冻存盒管理</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ── layout ── */
+.app-shell{display:flex;gap:20px;align-items:flex-start;}
+.sidebar{width:220px;flex-shrink:0;}
+.main-panel{flex:1;min-width:0;}
+
+/* ── sidebar box list ── */
+.box-list{display:flex;flex-direction:column;gap:6px;}
+.box-item{
+  display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  cursor:pointer;transition:border-color .15s;
+}
+.box-item:hover{border-color:var(--border2);}
+.box-item.active{border-color:var(--accent);background:#eef4ff;}
+.box-color-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.box-item-body{min-width:0;flex:1;}
+.box-item-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.box-item-meta{font-family:var(--mono);font-size:10px;color:var(--hint);margin-top:2px;line-height:1.5;}
+.box-bar{height:2px;background:var(--bg3);border-radius:1px;margin-top:5px;overflow:hidden;}
+.box-bar-fill{height:100%;background:var(--accent2);border-radius:1px;transition:width .3s;}
+.empty-sidebar{font-family:var(--mono);font-size:11px;color:var(--hint);text-align:center;padding:20px 8px;line-height:1.7;}
+
+/* ── toolbar / tabs ── */
+.panel-toolbar{
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;
+}
+.tab-row{display:flex;gap:3px;background:var(--bg3);padding:3px;border-radius:8px;}
+.tab-btn{
+  padding:5px 14px;font-size:12px;font-family:var(--display);font-weight:600;
+  border-radius:6px;border:none;background:transparent;color:var(--muted);
+  cursor:pointer;transition:all .12s;
+}
+.tab-btn.active{background:var(--bg2);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.search-wrap{position:relative;flex:1;max-width:320px;}
+.search-wrap input{
+  width:100%;padding:7px 10px 7px 32px;background:var(--bg2);
+  border:1px solid var(--border);border-radius:8px;
+  font-family:var(--mono);font-size:12px;color:var(--text);outline:none;
+  transition:border-color .15s;
+}
+.search-wrap input:focus{border-color:var(--accent);}
+.search-wrap input::placeholder{color:var(--hint);}
+.search-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--hint);font-size:14px;}
+
+/* ── box header ── */
+.box-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;gap:12px;}
+.box-header-left{display:flex;align-items:center;gap:10px;}
+.box-header-title{font-size:18px;font-weight:700;}
+.box-header-color{width:13px;height:13px;border-radius:50%;flex-shrink:0;}
+.box-meta-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;}
+.meta-chip{
+  font-family:var(--mono);font-size:10px;padding:2px 8px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--muted);
+}
+.meta-chip.used{background:#ecfdf5;border-color:#a7f3d0;color:var(--success);}
+.meta-chip.temp{background:#eff6ff;border-color:#bfdbfe;color:#2563eb;}
+
+/* ── grid ── */
+.grid-container{overflow-x:auto;}
+.col-headers{display:flex;margin-left:28px;margin-bottom:3px;}
+.col-h{width:38px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--hint);flex-shrink:0;}
+.grid-row{display:flex;align-items:center;margin-bottom:2px;}
+.row-h{width:24px;font-family:var(--mono);font-size:10px;color:var(--hint);text-align:right;padding-right:5px;flex-shrink:0;}
+.cell{
+  width:34px;height:34px;margin:0 2px;border-radius:6px;
+  border:1px solid var(--border);background:var(--bg3);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:transform .1s,border-color .1s;position:relative;
+}
+.cell:hover{transform:scale(1.18);border-color:var(--accent);z-index:10;}
+.cell-dot{width:9px;height:9px;border-radius:50%;}
+.cell-plus{font-size:12px;color:var(--hint);opacity:.4;}
+.cell-tip{
+  position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);
+  background:var(--text);color:#fff;padding:5px 9px;border-radius:7px;
+  font-family:var(--mono);font-size:10px;white-space:nowrap;
+  pointer-events:none;z-index:100;display:none;line-height:1.6;
+}
+.cell:hover .cell-tip{display:block;}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+.legend-item{display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;color:var(--muted);}
+.legend-dot{width:7px;height:7px;border-radius:50%;}
+
+/* ── inline table ── */
+.itbl-wrap{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.itbl{width:100%;border-collapse:collapse;font-size:12px;}
+.itbl thead th{
+  background:var(--bg3);font-family:var(--mono);font-size:10px;font-weight:500;
+  color:var(--hint);padding:7px 8px;text-align:left;border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+.itbl tbody tr{border-bottom:1px solid var(--bg3);}
+.itbl tbody tr:last-child{border-bottom:none;}
+.itbl tbody tr:hover{background:#fafbff;}
+.itbl td{padding:3px 3px;}
+.itbl td.pos-td{padding:3px 8px;font-family:var(--mono);font-size:11px;color:var(--accent);text-align:center;width:56px;}
+.tc{
+  background:transparent;border:1px solid transparent;border-radius:5px;
+  padding:5px 7px;font-size:12px;font-family:var(--display);color:var(--text);
+  outline:none;width:100%;transition:border-color .12s;
+}
+.tc:hover{border-color:var(--border);}
+.tc:focus{border-color:var(--accent);background:var(--bg3);}
+.tc option{background:#fff;}
+.row-x{background:none;border:none;cursor:pointer;color:var(--hint);padding:4px 5px;border-radius:4px;font-size:14px;transition:color .12s;}
+.row-x:hover{color:var(--danger);}
+.itbl-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 12px;background:var(--bg3);border-top:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--hint);
+}
+
+/* ── search results ── */
+.search-results{display:flex;flex-direction:column;gap:6px;}
+.result-item{
+  background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;cursor:pointer;
+  display:grid;grid-template-columns:1fr 140px 120px;gap:12px;align-items:center;
+  transition:border-color .12s;
+}
+.result-item:hover{border-color:var(--accent);}
+.result-name{font-size:13px;font-weight:600;}
+.result-sub{font-family:var(--mono);font-size:10px;color:var(--hint);margin-top:2px;}
+.result-loc{font-family:var(--mono);font-size:11px;}
+.result-date{font-family:var(--mono);font-size:11px;color:var(--hint);text-align:right;}
+.no-results{font-family:var(--mono);font-size:12px;color:var(--hint);text-align:center;padding:3rem 0;}
+
+/* ── empty state ── */
+.empty-panel{
+  text-align:center;padding:4rem 1rem;
+  border:1.5px dashed var(--border2);border-radius:14px;
+  font-family:var(--mono);font-size:12px;color:var(--hint);line-height:2;
+}
+
+/* ── modals ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);
+  display:flex;align-items:center;justify-content:center;
+  z-index:1000;opacity:0;pointer-events:none;transition:opacity .18s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal{
+  background:var(--bg2);border:1px solid var(--border2);border-radius:16px;
+  padding:24px;width:440px;max-height:90vh;overflow-y:auto;
+  transform:translateY(10px);transition:transform .18s;
+}
+.modal-overlay.open .modal{transform:translateY(0);}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+.field-row{display:grid;gap:12px;}
+.field-row.c2{grid-template-columns:1fr 1fr;}
+.field-row.c3{grid-template-columns:1fr 1fr 1fr;}
+.field-row.cv{grid-template-columns:1fr 90px;}
+.size-hint{font-family:var(--mono);font-size:10px;color:var(--accent2);margin-top:5px;}
+
+/* ── color picker ── */
+.cp-row{display:flex;gap:7px;flex-wrap:wrap;padding:3px 0;}
+.cp-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .12s;}
+.cp-swatch.active{border-color:var(--text);transform:scale(1.2);}
+
+/* ── btn overrides ── */
+.btn-icon{display:inline-flex;align-items:center;gap:5px;}
+
+/* ── toast ── */
+.toast{
+  position:fixed;bottom:2rem;left:50%;transform:translateX(-50%) translateY(8px);
+  background:var(--text);color:#fff;padding:8px 20px;border-radius:20px;
+  font-family:var(--mono);font-size:12px;opacity:0;transition:all .2s;
+  z-index:9999;pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── btn-danger ── */
+.btn-danger{background:none;border:1px solid var(--danger-border);color:var(--danger);
+  border-radius:8px;padding:7px 14px;font-family:var(--display);font-size:12px;
+  font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:background .12s;}
+.btn-danger:hover{background:var(--danger-bg);}
+</style>
+</head>
+<body>
+<div class="container" style="max-width:900px">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>冻存盒管理</h1>
+      <span class="ver">v1.0 · 2026-05-09</span>
+    </div>
+    <a class="back-link" href="index.html">← 工具箱</a>
+  </div>
+
+  <!-- Top actions -->
+  <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <button class="btn btn-primary btn-icon" onclick="openAddBox()">+ 新建冻存盒</button>
+    <button class="btn btn-ghost btn-icon" onclick="downloadTemplate()">⬇ 下载模板</button>
+    <button class="btn btn-ghost btn-icon" onclick="document.getElementById('imp-file').click()">↑ 导入 Excel</button>
+    <button class="btn btn-ghost btn-icon" onclick="exportExcel()">↓ 导出 Excel</button>
+    <input type="file" id="imp-file" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)">
+  </div>
+
+  <!-- App shell -->
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="card card-body" style="padding:12px;">
+        <p class="section-label" style="margin-bottom:10px">冻存盒列表</p>
+        <div class="box-list" id="box-list">
+          <div class="empty-sidebar">暂无冻存盒<br>点击「新建」开始</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main panel -->
+    <div class="main-panel">
+      <!-- toolbar -->
+      <div class="panel-toolbar">
+        <div class="tab-row">
+          <button class="tab-btn active" id="tab-grid" onclick="switchTab('grid')">网格</button>
+          <button class="tab-btn" id="tab-table" onclick="switchTab('table')">表格编辑</button>
+          <button class="tab-btn" id="tab-search" onclick="switchTab('search')">搜索</button>
+        </div>
+        <div class="search-wrap">
+          <span class="search-icon">⌕</span>
+          <input id="search-input" placeholder="搜索样品名称、类型、备注…" oninput="onSearch(this.value)">
+        </div>
+      </div>
+
+      <!-- content -->
+      <div id="panel-content">
+        <div class="empty-panel">选择左侧冻存盒<br>或新建一个开始管理</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Add Box Modal ══ -->
+<div class="modal-overlay" id="modal-box" onclick="closeIf(event,'modal-box')">
+  <div class="modal">
+    <div class="modal-title">🧊 新建冻存盒</div>
+    <div class="field-row c2" style="margin-bottom:12px">
+      <div class="field"><label>冻存盒名称 *</label><input type="text" id="bn-name" placeholder="如：Box-001" style="width:100%"></div>
+      <div class="field"><label>使用者</label><input type="text" id="bn-owner" placeholder="如：张三" style="width:100%"></div>
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>所在冰箱 *</label>
+      <input type="text" id="bn-fridge" placeholder="如：-80℃冰箱A" style="width:100%">
+    </div>
+    <div class="field-row c3" style="margin-bottom:12px">
+      <div class="field">
+        <label>储存温度</label>
+        <select id="bn-temp" style="width:100%">
+          <option value="-20">-20 °C</option>
+          <option value="-40">-40 °C</option>
+          <option value="-80" selected>-80 °C</option>
+        </select>
+      </div>
+      <div class="field"><label>行数</label><input type="number" id="bn-rows" value="8" min="1" max="20" oninput="updPreview()"></div>
+      <div class="field"><label>列数</label><input type="number" id="bn-cols" value="8" min="1" max="20" oninput="updPreview()"></div>
+    </div>
+    <div class="field" style="margin-bottom:4px">
+      <label>颜色标识</label>
+      <div class="cp-row" id="cp-row"></div>
+    </div>
+    <div class="size-hint" id="size-hint">8 × 8 = 64 格</div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-box')">取消</button>
+      <button class="btn btn-primary" onclick="addBox()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Sample Modal ══ -->
+<div class="modal-overlay" id="modal-sample" onclick="closeIf(event,'modal-sample')">
+  <div class="modal">
+    <div class="modal-title">🧫 样品信息 <span id="sp-pos-badge" style="font-family:var(--mono);font-size:12px;font-weight:400;color:var(--accent);margin-left:4px;background:#eff6ff;border:1px solid #bfdbfe;padding:2px 8px;border-radius:5px;"></span></div>
+    <div class="field" style="margin-bottom:12px">
+      <label>样品名称 *</label>
+      <input type="text" id="sp-name" placeholder="如：Sample-001" style="width:100%">
+    </div>
+    <div class="field-row c2" style="margin-bottom:12px">
+      <div class="field">
+        <label>样品类型</label>
+        <select id="sp-type" style="width:100%">
+          <option>DNA</option><option>RNA</option><option>蛋白质</option>
+          <option>细胞</option><option>血清</option><option>血浆</option>
+          <option>尿液</option><option>组织</option><option>其他</option>
+        </select>
+      </div>
+      <div class="field"><label>存入日期</label><input type="date" id="sp-date" style="width:100%"></div>
+    </div>
+    <div class="field-row cv" style="margin-bottom:12px">
+      <div class="field"><label>浓度</label><input type="text" id="sp-conc" placeholder="如：50" style="width:100%"></div>
+      <div class="field">
+        <label>单位</label>
+        <select id="sp-unit" style="width:100%">
+          <option>ng/μL</option><option>mg/mL</option><option>μg/mL</option>
+          <option>μM</option><option>mM</option><option>copies/mL</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>备注</label>
+      <input type="text" id="sp-notes" placeholder="备注信息" style="width:100%">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="sp-del-btn" onclick="delSample()" style="display:none;margin-right:auto">删除</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-sample')">取消</button>
+      <button class="btn btn-primary" onclick="saveSample()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════ constants ════
+const TYPE_CLR={
+  "DNA":"#2563eb","RNA":"#db2777","蛋白质":"#059669","细胞":"#d97706",
+  "血清":"#9333ea","血浆":"#0891b2","尿液":"#65a30d","组织":"#b45309","其他":"#6b7280"
+};
+const TYPES=["DNA","RNA","蛋白质","细胞","血清","血浆","尿液","组织","其他"];
+const UNITS=["ng/μL","mg/mL","μg/mL","μM","mM","copies/mL"];
+const BOX_COLORS=["#2563eb","#0891b2","#059669","#d97706","#dc2626","#9333ea","#db2777","#65a30d","#6366f1","#b45309","#6b7280","#0f172a"];
+
+// ════ state ════
+let st={boxes:[],selId:null,tab:'grid',cell:null};
+let pickColor=BOX_COLORS[0];
+
+// ════ utils ════
+function gid(){return Math.random().toString(36).slice(2,9);}
+function pos(r,c){return `${String.fromCharCode(65+c)}${r+1}`;}
+function td(){return new Date().toISOString().slice(0,10);}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+
+// ════ sidebar ════
+function renderSidebar(){
+  const el=document.getElementById('box-list');
+  if(!st.boxes.length){el.innerHTML='<div class="empty-sidebar">暂无冻存盒<br>点击「新建」开始</div>';return;}
+  el.innerHTML=st.boxes.map(b=>{
+    const used=Object.keys(b.samples).length,cap=b.rows*b.cols,pct=Math.round(used/cap*100);
+    return `<div class="box-item${b.id===st.selId?' active':''}" onclick="selBox('${b.id}')">
+      <div class="box-color-dot" style="background:${b.color}"></div>
+      <div class="box-item-body">
+        <div class="box-item-name">${esc(b.name)}</div>
+        <div class="box-item-meta">${esc(b.fridge)} · ${b.temp}°C<br>${b.owner?'👤 '+esc(b.owner)+'  ·  ':''} ${used}/${cap}</div>
+        <div class="box-bar"><div class="box-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════ select / tabs ════
+function selBox(id){
+  st.selId=id;
+  if(st.tab==='search')st.tab='grid';
+  document.getElementById('search-input').value='';
+  renderSidebar();renderPanel();
+}
+
+function switchTab(t){
+  st.tab=t;
+  ['grid','table','search'].forEach(k=>document.getElementById('tab-'+k).classList.toggle('active',k===t));
+  renderPanel();
+}
+
+function onSearch(q){
+  if(st.tab!=='search')switchTab('search');
+  else renderSearch(q);
+}
+
+// ════ panel ════
+function renderPanel(){
+  const el=document.getElementById('panel-content');
+  if(st.tab==='search'){renderSearch(document.getElementById('search-input').value);return;}
+  if(!st.selId){el.innerHTML='<div class="empty-panel">选择左侧冻存盒<br>或新建一个开始管理</div>';return;}
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  st.tab==='table'?renderTableView(box,el):renderGridView(box,el);
+}
+
+// ─── grid ───
+function renderGridView(box,el){
+  const used=Object.keys(box.samples).length,cap=box.rows*box.cols;
+  const types=[...new Set(Object.values(box.samples).map(s=>s.type))];
+
+  let colH='<div class="col-headers">';
+  for(let c=0;c<box.cols;c++)colH+=`<div class="col-h">${String.fromCharCode(65+c)}</div>`;
+  colH+='</div>';
+
+  let grid='';
+  for(let r=0;r<box.rows;r++){
+    grid+=`<div class="grid-row"><div class="row-h">${r+1}</div>`;
+    for(let c=0;c<box.cols;c++){
+      const p=pos(r,c),s=box.samples[p];
+      const clr=s?(TYPE_CLR[s.type]||'#6b7280'):null;
+      const tip=s?`<div class="cell-tip">${esc(s.name)}<br>${s.type}${s.date?' · '+s.date:''}${s.concentration?' · '+s.concentration+' '+s.unit:''}</div>`:'';
+      grid+=`<div class="cell" onclick="openSp(${r},${c})" style="${s?`border-color:${clr}33;background:${clr}10`:''}">
+        ${s?`<div class="cell-dot" style="background:${clr}"></div>`:'<span class="cell-plus">+</span>'}${tip}
+      </div>`;
+    }
+    grid+='</div>';
+  }
+
+  const legend=types.length?`<div class="legend">${types.map(t=>`<div class="legend-item"><div class="legend-dot" style="background:${TYPE_CLR[t]||'#6b7280'}"></div>${t}</div>`).join('')}</div>`:'';
+
+  el.innerHTML=`
+    <div class="box-header">
+      <div>
+        <div class="box-header-left">
+          <div class="box-header-color" style="background:${box.color}"></div>
+          <div class="box-header-title">${esc(box.name)}</div>
+        </div>
+        <div class="box-meta-row">
+          <span class="meta-chip">${esc(box.fridge)}</span>
+          <span class="meta-chip temp">${box.temp}°C</span>
+          ${box.owner?`<span class="meta-chip">👤 ${esc(box.owner)}</span>`:''}
+          <span class="meta-chip">${box.rows}×${box.cols}</span>
+          <span class="meta-chip used">${used} 已用</span>
+          <span class="meta-chip">${cap-used} 空余</span>
+        </div>
+      </div>
+      <button class="btn-danger" onclick="delBox('${box.id}')">删除此盒</button>
+    </div>
+    <div class="grid-container">${colH}${grid}</div>${legend}`;
+}
+
+// ─── table view ───
+function renderTableView(box,el){
+  const allPos=[];for(let r=0;r<box.rows;r++)for(let c=0;c<box.cols;c++)allPos.push(pos(r,c));
+  const existing=Object.keys(box.samples).sort();
+  const used=Object.keys(box.samples).length,cap=box.rows*box.cols;
+
+  let rows=existing.map(p=>buildTR(allPos,box.samples[p],p)).join('');
+  for(let i=0;i<5;i++)rows+=buildTR(allPos,null,'');
+
+  el.innerHTML=`
+    <div class="box-header">
+      <div>
+        <div class="box-header-left">
+          <div class="box-header-color" style="background:${box.color}"></div>
+          <div class="box-header-title">${esc(box.name)} <span style="font-size:13px;font-weight:400;color:var(--muted)">— 表格编辑</span></div>
+        </div>
+        <div class="box-meta-row">
+          <span class="meta-chip">${esc(box.fridge)}</span>
+          <span class="meta-chip temp">${box.temp}°C</span>
+          ${box.owner?`<span class="meta-chip">👤 ${esc(box.owner)}</span>`:''}
+          <span class="meta-chip used">${used} 已用</span>
+          <span class="meta-chip">${cap-used} 空余</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="addBlankRow()">+ 添加行</button>
+        <button class="btn btn-primary btn-sm" onclick="saveTable()" style="margin-top:0">保存全部</button>
+      </div>
+    </div>
+    <div class="itbl-wrap">
+      <table class="itbl">
+        <thead><tr>
+          <th>位置</th><th style="min-width:120px">样品名称</th><th style="min-width:80px">类型</th>
+          <th style="min-width:110px">存入日期</th><th style="min-width:70px">浓度</th>
+          <th style="min-width:90px">单位</th><th style="min-width:110px">备注</th><th style="width:32px"></th>
+        </tr></thead>
+        <tbody id="itbl-body">${rows}</tbody>
+      </table>
+      <div class="itbl-footer">
+        <span>编辑后点击「保存全部」生效</span>
+        <button class="btn btn-ghost btn-sm" onclick="addBlankRow()" style="margin-top:0">+ 添加行</button>
+      </div>
+    </div>`;
+}
+
+function buildTR(allPos,s,cur){
+  const to=TYPES.map(t=>`<option${s&&s.type===t?' selected':''}>${t}</option>`).join('');
+  const uo=UNITS.map(u=>`<option${s&&s.unit===u?' selected':''}>${u}</option>`).join('');
+  const po='<option value="">—</option>'+allPos.map(p=>`<option${p===cur?' selected':''}>${p}</option>`).join('');
+  return `<tr>
+    <td class="pos-td"><select class="tc" style="width:56px">${po}</select></td>
+    <td><input class="tc" type="text" value="${s?esc(s.name):''}" placeholder="样品名称"></td>
+    <td><select class="tc">${to}</select></td>
+    <td><input class="tc" type="date" value="${s?s.date:td()}"></td>
+    <td><input class="tc" type="text" value="${s?esc(s.concentration):''}" placeholder="浓度"></td>
+    <td><select class="tc">${uo}</select></td>
+    <td><input class="tc" type="text" value="${s?esc(s.notes):''}" placeholder="备注"></td>
+    <td><button class="row-x" onclick="this.closest('tr').remove()">×</button></td>
+  </tr>`;
+}
+
+function addBlankRow(){
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  const allPos=[];for(let r=0;r<box.rows;r++)for(let c=0;c<box.cols;c++)allPos.push(pos(r,c));
+  const tbody=document.getElementById('itbl-body');if(!tbody)return;
+  const tr=document.createElement('tr');
+  tr.innerHTML=buildTR(allPos,null,'').replace(/^<tr>/,'').replace(/<\/tr>$/,'');
+  tbody.appendChild(tr);
+}
+
+function saveTable(){
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  const newS={};let cnt=0;
+  document.querySelectorAll('#itbl-body tr').forEach(tr=>{
+    const td=tr.querySelectorAll('td');
+    const p=td[0].querySelector('select').value;
+    const n=td[1].querySelector('input').value.trim();
+    if(!p||!n)return;
+    newS[p]={id:box.samples[p]?.id||gid(),pos:p,name:n,
+      type:td[2].querySelector('select').value,
+      date:td[3].querySelector('input').value,
+      concentration:td[4].querySelector('input').value,
+      unit:td[5].querySelector('select').value,
+      notes:td[6].querySelector('input').value};
+    cnt++;
+  });
+  box.samples=newS;renderSidebar();
+  showToast(`已保存 ${cnt} 条样品`);
+  renderTableView(box,document.getElementById('panel-content'));
+}
+
+// ─── search ───
+function renderSearch(q){
+  const el=document.getElementById('panel-content');
+  if(!q.trim()){el.innerHTML='<div class="no-results">输入关键词搜索所有冻存盒中的样品</div>';return;}
+  const res=[];
+  st.boxes.forEach(box=>Object.values(box.samples).forEach(s=>{
+    if(`${s.name} ${s.type} ${s.notes||''} ${s.pos}`.toLowerCase().includes(q.toLowerCase()))
+      res.push({...s,boxName:box.name,boxFridge:box.fridge,boxId:box.id,boxColor:box.color});
+  }));
+  if(!res.length){el.innerHTML='<div class="no-results">未找到匹配样品</div>';return;}
+  el.innerHTML=`<div class="search-results">${res.map(s=>`
+    <div class="result-item" onclick="jumpTo('${s.boxId}','${s.pos}')">
+      <div>
+        <div class="result-name">${esc(s.name)}</div>
+        <div class="result-sub">${s.type}${s.notes?' · '+esc(s.notes.slice(0,30)):''}</div>
+      </div>
+      <div class="result-loc">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+          <div style="width:7px;height:7px;border-radius:50%;background:${s.boxColor};flex-shrink:0"></div>
+          <span style="color:var(--hint);font-size:10px">${esc(s.boxName)}</span>
+        </div>
+        <span style="color:var(--accent);font-weight:500">位置 ${s.pos}</span>
+      </div>
+      <div class="result-date">${s.date||'—'}<br>${s.concentration?s.concentration+' '+s.unit:''}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function jumpTo(boxId,p){
+  selBox(boxId);
+  setTimeout(()=>openSp(parseInt(p.slice(1))-1,p.charCodeAt(0)-65),40);
+}
+
+// ════ box CRUD ════
+function buildCP(){
+  document.getElementById('cp-row').innerHTML=BOX_COLORS.map(c=>
+    `<div class="cp-swatch${c===pickColor?' active':''}" style="background:${c}" onclick="pickC('${c}')"></div>`).join('');
+}
+function pickC(c){pickColor=c;buildCP();}
+
+function openAddBox(){
+  ['bn-name','bn-fridge','bn-owner'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('bn-rows').value=8;
+  document.getElementById('bn-cols').value=8;
+  document.getElementById('bn-temp').value='-80';
+  pickColor=BOX_COLORS[0];buildCP();updPreview();
+  openModal('modal-box');
+}
+
+function updPreview(){
+  const r=parseInt(document.getElementById('bn-rows').value)||8;
+  const c=parseInt(document.getElementById('bn-cols').value)||8;
+  document.getElementById('size-hint').textContent=`${r} × ${c} = ${r*c} 格`;
+}
+
+function addBox(){
+  const name=document.getElementById('bn-name').value.trim();
+  const fridge=document.getElementById('bn-fridge').value.trim();
+  if(!name||!fridge){showToast('请填写名称和冰箱');return;}
+  const box={id:gid(),name,fridge,
+    owner:document.getElementById('bn-owner').value.trim(),
+    temp:document.getElementById('bn-temp').value,
+    color:pickColor,
+    rows:parseInt(document.getElementById('bn-rows').value)||8,
+    cols:parseInt(document.getElementById('bn-cols').value)||8,
+    samples:{}};
+  st.boxes.push(box);st.selId=box.id;
+  closeModal('modal-box');renderSidebar();renderPanel();
+  showToast(`冻存盒「${name}」已创建`);
+}
+
+function delBox(id){
+  const b=st.boxes.find(b=>b.id===id);
+  if(!confirm(`确定删除冻存盒「${b.name}」及所有样品？`))return;
+  st.boxes=st.boxes.filter(b=>b.id!==id);
+  if(st.selId===id)st.selId=null;
+  renderSidebar();renderPanel();
+  showToast('冻存盒已删除');
+}
+
+// ════ sample modal ════
+function openSp(r,c){
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  const p=pos(r,c);const s=box.samples[p];
+  st.cell={r,c,p};
+  document.getElementById('sp-pos-badge').textContent=p;
+  document.getElementById('sp-name').value=s?s.name:'';
+  document.getElementById('sp-type').value=s?s.type:'DNA';
+  document.getElementById('sp-date').value=s?s.date:td();
+  document.getElementById('sp-conc').value=s?s.concentration:'';
+  document.getElementById('sp-unit').value=s?s.unit:'ng/μL';
+  document.getElementById('sp-notes').value=s?s.notes:'';
+  document.getElementById('sp-del-btn').style.display=s?'inline-flex':'none';
+  openModal('modal-sample');
+}
+
+function saveSample(){
+  const name=document.getElementById('sp-name').value.trim();
+  if(!name){showToast('请填写样品名称');return;}
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  const p=st.cell.p;
+  box.samples[p]={id:box.samples[p]?.id||gid(),pos:p,name,
+    type:document.getElementById('sp-type').value,
+    date:document.getElementById('sp-date').value,
+    concentration:document.getElementById('sp-conc').value,
+    unit:document.getElementById('sp-unit').value,
+    notes:document.getElementById('sp-notes').value};
+  closeModal('modal-sample');renderPanel();renderSidebar();
+  showToast('样品已保存');
+}
+
+function delSample(){
+  if(!confirm('确定删除该样品？'))return;
+  const box=st.boxes.find(b=>b.id===st.selId);if(!box)return;
+  delete box.samples[st.cell.p];
+  closeModal('modal-sample');renderPanel();renderSidebar();
+  showToast('样品已删除');
+}
+
+// ════ Excel ════
+function downloadTemplate(){
+  const tpl=[{冻存盒:'Box-001',冰箱:'-80℃冰箱A',使用者:'张三',温度:'-80',位置:'A1',
+    样品名称:'Sample-001',类型:'DNA',存入日期:'2024-01-01',浓度:'50',单位:'ng/μL',备注:''}];
+  const ws=XLSX.utils.json_to_sheet(tpl);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'样品导入模板');
+  const notes=[
+    {说明:'【冻存盒】相同名称+冰箱的行自动合并'},
+    {说明:'【温度】填 -20 / -40 / -80（默认 -80）'},
+    {说明:'【位置】格式：A1、B3（列字母 + 行数字）'},
+    {说明:'【类型】DNA / RNA / 蛋白质 / 细胞 / 血清 / 血浆 / 尿液 / 组织 / 其他'},
+    {说明:'【单位】ng/μL / mg/mL / μg/mL / μM / mM / copies/mL'},
+  ];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(notes),'填写说明');
+  XLSX.writeFile(wb,'冻存盒导入模板.xlsx');
+  showToast('模板已下载');
+}
+
+function exportExcel(){
+  const rows=[];
+  st.boxes.forEach(box=>Object.values(box.samples).forEach(s=>{
+    rows.push({冻存盒:box.name,冰箱:box.fridge,使用者:box.owner||'',温度:box.temp,
+      位置:s.pos,样品名称:s.name,类型:s.type,存入日期:s.date,浓度:s.concentration,单位:s.unit,备注:s.notes||''});
+  }));
+  if(!rows.length)rows.push({冻存盒:'',冰箱:'',使用者:'',温度:'',位置:'',样品名称:'',类型:'',存入日期:'',浓度:'',单位:'',备注:''});
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'样品列表');
+  XLSX.writeFile(wb,`冻存盒数据_${td()}.xlsx`);
+  showToast('导出成功');
+}
+
+function importExcel(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array'});
+      const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      const map={};let cnt=0;
+      data.forEach(row=>{
+        const k=`${row['冻存盒']||'未命名'}__${row['冰箱']||''}`;
+        if(!map[k])map[k]={id:gid(),name:row['冻存盒']||'未命名',fridge:row['冰箱']||'',
+          owner:row['使用者']||'',temp:row['温度']||'-80',
+          color:BOX_COLORS[Object.keys(map).length%BOX_COLORS.length],
+          rows:8,cols:8,samples:{}};
+        const p=String(row['位置']||'').trim();if(!p)return;
+        map[k].samples[p]={id:gid(),pos:p,name:row['样品名称']||'',type:row['类型']||'其他',
+          date:String(row['存入日期']||''),concentration:String(row['浓度']||''),
+          unit:row['单位']||'ng/μL',notes:row['备注']||''};
+        cnt++;
+      });
+      Object.values(map).forEach(nb=>{
+        const ex=st.boxes.find(b=>b.name===nb.name&&b.fridge===nb.fridge);
+        if(ex)Object.assign(ex.samples,nb.samples);
+        else st.boxes.push(nb);
+      });
+      renderSidebar();renderPanel();
+      showToast(`导入成功，共 ${cnt} 条样品`);
+    }catch(err){showToast('导入失败，请检查格式');}
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value='';
+}
+
+// ════ modal helpers ════
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeIf(e,id){if(e.target===e.currentTarget)closeModal(id);}
+</script>
+</body>
+</html>
